@@ -16,29 +16,184 @@ var prompt = require('prompt');
 
 var c;
 
-var IDeploy = function (options) {
+/**
+ * Ideploy namespace
+ *
+ * @type {{}}
+ */
+var Ideploy = {};
 
+/**
+ * Ideploy workspace object
+ *
+ * @param options
+ * @constructor
+ */
+Ideploy.Workspace = function (options) {
+
+    /**
+     * Workspace options
+     * @type {{name: string, path: null}}
+     */
+    this.options = {
+        name: 'unnamed',
+        path: null
+    };
+
+    /**
+     * Workspace name
+     */
+    this.name;
+
+    /**
+     * FS path
+     */
+    this.path;
+
+    /**
+     * Instance init
+     *
+     * @param options
+     * @private
+     */
+    this.__initInstance = function (options) {
+        this.options = options;
+
+        this.name = this.options.name;
+        this.path = this.options.path;
+    };
+
+    /**
+     * Workspace init
+     */
+    this.init = function() {
+        console.log('Workspace init.', this.name, this.path);
+        if (!fss.isDir(this.path)) {
+            console.log('Creating workspace dir.', this.name, this.path);
+            fss.mkdir(this.path);
+        }
+    };
+
+    this.__initInstance(options);
+};
+
+/**
+ * Ideploy client object
+ *
+ * @param options
+ * @constructor
+ */
+Ideploy.Client = function (options) {
+
+    /**
+     * Options
+     *
+     * @type {{}}
+     */
     this.options = {
         host: null,
         username: null,
         password: null,
         port: 21,
         src: null,
-        target: null
+        target: null,
+        verbose: false,
+        debug: false,
+        workspace: '.ideploy'
     };
 
+    /**
+     * Log storage
+     *
+     * @type {{items: Array, files: Array, folders: Array}}
+     */
     this.log = {
         items: [],
         files: [],
         folders: []
     };
 
-    this.ftp = false;
+    /**
+     * Client instance
+     *
+     * @type {object}
+     */
+    this.ftp;
 
-    this.init = function (options) {
-        this.options = options;
+    /**
+     * Verbose flag
+     *
+     * @type {boolean}
+     */
+    this.verbose = false;
+
+    /**
+     * Debug flag
+     * @type {boolean}
+     */
+    this.debug = false;
+
+    /**
+     * Local CWD
+     *
+     * @type {string}
+     */
+    this.lcwd;
+
+    /**
+     * Remote CWD
+     *
+     * @type {string}
+     */
+    this.rcwd;
+
+    /**
+     * Async done handler
+     */
+    this.doneHandler = function () {
     };
 
+    /**
+     * Workspace object
+     *
+     * @type {object}
+     */
+    this.workspace;
+
+    /**
+     * Init instance
+     * @param options
+     */
+    this.__initInstance = function (options) {
+        this.options = options;
+
+        // CLI
+        if (typeof this.options.debug != 'undefined') {
+            this.debug = this.options.debug;
+        }
+
+        if (typeof this.options.verbose != 'undefined') {
+            this.verbose = this.options.verbose;
+        }
+
+        // Workspace
+        this.initWorkspace(this.options.workspace || '.ideploy');
+
+    };
+
+    this.initWorkspace = function (workspace) {
+        this.workspace = new Ideploy.Workspace({
+            name: workspace.name,
+            path: workspace.path
+        });
+        this.workspace.init();
+    };
+
+    /**
+     * Options validator
+     *
+     * @returns {Array}
+     */
     this.validate = function () {
         var errors = [];
         if (typeof this.options.host == 'undefined' || this.options.host.length == 0) {
@@ -54,50 +209,52 @@ var IDeploy = function (options) {
             errors.push('Undefined port');
         }
         return errors;
-    }
+    };
 
+    /**
+     * Options validation getter
+     *
+     * @returns {boolean}
+     */
     this.isValid = function () {
         this.errors = this.validate();
         return this.errors.length === 0;
     }
 
+    /**
+     * Begin event
+     */
     this.begin = function () {
-        this.connectFtp();
+        this.connectSftp();
     };
 
+    /**
+     * End event
+     */
     this.end = function () {
 
     };
 
+    /**
+     * Done setter
+     *
+     * @param value
+     */
+    this.setDone = function (value) {
+        this.doneHandler(true);
+    };
+
+    /**
+     * Deploy call
+     */
     this.deploy = function () {
         this.begin();
         this.end();
     };
 
-    this.connectFtp = function () {
-        this.ftp = c = new Ftp();
-
-        var options = {
-            host: this.options.host,
-            port: this.options.port || 21,
-            user: this.options.username,
-            pass: this.options.password
-        };
-
-        c.on('ready', function () {
-            console.log('FTP ready');
-            c.list('.', function (list, err) {
-                if (err) throw err;
-                console.log(list);
-                c.end();
-            });
-        });
-
-        console.log('FTP connect', options);
-        c.connect(options);
-
-    };
-
+    /**
+     * Client connector
+     */
     this.connectSftp = function () {
 
         var options = {
@@ -105,30 +262,30 @@ var IDeploy = function (options) {
             port: this.options.port || 21,
             user: this.options.username,
             pass: this.options.password,
-            debugMode: true
+            debugMode: this.debug
         };
 
         console.info('JSFtp connecting...', JSON.stringify(options, null, 2))
 
-        this.ftp = new JSFtp(options);
+        this.ftp = c = new JSFtp(options);
 
-        console.log(this.ftp);
-
-        this.ftp.on('jsftp_debug', function (eventType, data) {
-            console.log('DEBUG: ', eventType);
-            console.log(JSON.stringify(data, null, 2));
-        });
+        if (this.verbose) {
+            this.ftp.on('jsftp_debug', function (eventType, data) {
+                console.log('DEBUG: ', eventType);
+                console.log(JSON.stringify(data, null, 2));
+            });
+        }
 
         this.ftp.on('error', function (err) {
             console.error(err.code);
         });
 
-        console.info('JSFtp auth...', this.options.username, this.options.password);
+        console.info('JSFtp auth...', this.options.username + ':' + this.options.password);
 
         this.ftp.auth(this.options.username, this.options.password, function (err, data) {
-            console.info(this.ftp.system);
+            console.info('JSFtp auth successful'['green']);
 
-            this.ftp.list('/', function (err, res) {
+            c.ls('.', function (err, res) {
                 res.forEach(function (file) {
                     console.log(file.name);
                 });
@@ -136,15 +293,19 @@ var IDeploy = function (options) {
 
         });
 
-        this.ftp.ls('.', function (err, res) {
-            res.forEach(function (file) {
-                console.log(file.name);
-            });
-        });
 
     };
 
-    this.init(options);
+    /**
+     * Done handler setter
+     *
+     * @param handler
+     */
+    this.setDoneHandler = function (handler) {
+        this.doneHandler = handler;
+    };
+
+    this.__initInstance(options);
 };
 
 module.exports = function (grunt) {
@@ -184,11 +345,21 @@ module.exports = function (grunt) {
         grunt.log.debug('Target auth:', JSON.stringify(targetAuth, null, 4));
 
         // Ideploy options
-        var ideployOptions = extend(false, {}, targetConfig, targetAuth);
+        var ideployOptions = extend(false, {
+            workspace: {
+                name: this.target,
+                path: process.cwd() + '/.ideploy/workspace/' + this.target
+            },
+            debug: grunt.option('debug'),
+            verbose: grunt.option('verbose')
+        }, targetConfig, targetAuth);
         grunt.log.debug('Ideploy options:', JSON.stringify(ideployOptions, null, 4));
 
+        var done = this.async();
+
         // Ideploy init
-        var ideploy = new IDeploy(ideployOptions);
+        var ideploy = new Ideploy.Client(ideployOptions);
+        ideploy.setDoneHandler(done)
 
         if (ideploy.isValid()) {
 
