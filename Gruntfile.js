@@ -47,6 +47,17 @@ module.exports = function (grunt) {
 
         nodeunit: {
             tests: ['test/*_test.js']
+        },
+
+        run_grunt: {
+            options: {
+            },
+            ideploy: {
+                options: {
+                    log: false
+                },
+                src: ['node_modules/ideploy/Gruntfile.js']
+            }
         }
 
     });
@@ -56,12 +67,13 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-contrib-clean');
     grunt.loadNpmTasks('grunt-contrib-nodeunit');
+    grunt.loadNpmTasks('grunt-run-grunt');
 
     //---
 
     grunt.registerTask('test', ['clean', 'ideploy', /*'nodeunit'*/]);
     grunt.registerTask('default', ['jshint', /*'test'*/]);
-    grunt.registerTask('beta', ['ideploy:beta']);
-    grunt.registerTask('www', ['ideploy:www']);
+    grunt.registerTask('beta', [/*'run_grunt:ideploy',*/ 'ideploy:beta']);
+    grunt.registerTask('www', [/*'run_grunt:ideploy',*/ 'ideploy:www']);
 
 };
